@@ -1,0 +1,122 @@
+---
+title: ""
+author: ""
+date: ""
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Correlation among replicates
+
+```{r}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(tibble)
+  library(dplyr)
+  library(tidyr)
+  library(GGally)
+})
+```
+
+## Transcript-level
+
+```{r txlevel, fig.width = 8, fig.height = 8}
+txab <- abundances$tx_abundances
+
+quantmethods <- unique(paste0(
+  sapply(strsplit(colnames(txab), "__"), .subset, 2), "__", 
+  sapply(strsplit(colnames(txab), "__"), .subset, 3)
+))
+
+txsum <- lapply(quantmethods, function(qm) {
+  tmp <- txab[, grep(paste0(qm, "$"), colnames(txab))]
+  colnames(tmp) <- gsub(paste0("__", qm), "", colnames(tmp))
+  print(ggpairs(tmp,
+                lower = list(continuous = wrap("points", alpha = 0.3, size = 0.25))) +
+          theme_bw() + ggtitle(qm))
+  print(ggpairs(log10(tmp + 1),
+                lower = list(continuous = wrap("points", alpha = 0.3, size = 0.25))) +
+          theme_bw() + ggtitle(paste0(qm, ", log10(. + 1)")))
+  cor_srpk <- cor(tmp[, grep("srpk|sprk|Srpk|Sprk", colnames(tmp)), drop = FALSE])
+  cor_wt <- cor(tmp[, grep("wt|WT", colnames(tmp)), drop = FALSE])
+  cor_srpk_log <- cor(log10(tmp[, grep("srpk|sprk|Srpk|Sprk", colnames(tmp)), drop = FALSE] + 1))
+  cor_wt_log <- cor(log10(tmp[, grep("wt|WT", colnames(tmp)), drop = FALSE] + 1))
+  data.frame(method = qm, 
+             cor_srpk_lin = mean(cor_srpk[upper.tri(cor_srpk)]),
+             cor_wt_lin = mean(cor_wt[upper.tri(cor_wt)]),
+             cor_srpk_log = mean(cor_srpk_log[upper.tri(cor_srpk_log)]),
+             cor_wt_log = mean(cor_wt_log[upper.tri(cor_wt_log)]),
+             stringsAsFactors = FALSE)
+})
+txsum <- do.call(rbind, txsum) %>% 
+  tidyr::gather(group, correlation, -method) %>%
+  tidyr::separate(group, into = c("cor", "group", "transformation"))
+```
+
+```{r txlevelsum, fig.width = 8, fig.height = 8}
+levels <- txsum %>% dplyr::group_by(method) %>% 
+  dplyr::summarize(meancorr = mean(correlation)) %>%
+  dplyr::arrange(desc(meancorr)) %>% dplyr::pull(method)
+ggplot(txsum %>% dplyr::mutate(method = factor(method, levels = levels)), 
+       aes(x = method, y = correlation, fill = method)) + 
+  geom_bar(stat = "identity") + theme_bw() + facet_grid(transformation ~ group) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "none") + 
+  xlab("")
+```
+
+## Gene-level 
+
+```{r genelevel, fig.width = 8, fig.height = 8}
+geneab <- abundances$gene_abundances
+
+quantmethods <- unique(paste0(
+  sapply(strsplit(colnames(geneab), "__"), .subset, 2), "__", 
+  sapply(strsplit(colnames(geneab), "__"), .subset, 3)
+))
+
+genesum <- lapply(quantmethods, function(qm) {
+  tmp <- geneab[, grep(paste0(qm, "$"), colnames(geneab))]
+  colnames(tmp) <- gsub(paste0("__", qm), "", colnames(tmp))
+  print(ggpairs(tmp,
+                lower = list(continuous = wrap("points", alpha = 0.3, size = 0.25))) + 
+          theme_bw() + ggtitle(qm))
+  print(ggpairs(log10(tmp + 1),
+                lower = list(continuous = wrap("points", alpha = 0.3, size = 0.25))) + 
+          theme_bw() + ggtitle(paste0(qm, ", log10(. + 1)")))
+  cor_srpk <- cor(tmp[, grep("srpk|sprk|Srpk|Sprk", colnames(tmp)), drop = FALSE])
+  cor_wt <- cor(tmp[, grep("wt|WT", colnames(tmp)), drop = FALSE])
+  cor_srpk_log <- cor(log10(tmp[, grep("srpk|sprk|Srpk|Sprk", colnames(tmp)), drop = FALSE] + 1))
+  cor_wt_log <- cor(log10(tmp[, grep("wt|WT", colnames(tmp)), drop = FALSE] + 1))
+  data.frame(method = qm, 
+             cor_srpk_lin = mean(cor_srpk[upper.tri(cor_srpk)]),
+             cor_wt_lin = mean(cor_wt[upper.tri(cor_wt)]),
+             cor_srpk_log = mean(cor_srpk_log[upper.tri(cor_srpk_log)]),
+             cor_wt_log = mean(cor_wt_log[upper.tri(cor_wt_log)]),
+             stringsAsFactors = FALSE)
+})
+genesum <- do.call(rbind, genesum) %>% 
+  tidyr::gather(group, correlation, -method) %>%
+  tidyr::separate(group, into = c("cor", "group", "transformation"))
+```
+
+```{r genelevelsum, fig.width = 8, fig.height = 8}
+levels <- genesum %>% dplyr::group_by(method) %>% 
+  dplyr::summarize(meancorr = mean(correlation)) %>%
+  dplyr::arrange(desc(meancorr)) %>% dplyr::pull(method)
+ggplot(genesum %>% dplyr::mutate(method = factor(method, levels = levels)), 
+       aes(x = method, y = correlation, fill = method)) + 
+  geom_bar(stat = "identity") + theme_bw() + facet_grid(transformation ~ group) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "none") + 
+  xlab("")
+```
+
+## Session info
+
+```{r}
+date()
+sessionInfo()
+```
+
