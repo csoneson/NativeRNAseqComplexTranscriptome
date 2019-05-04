@@ -5,7 +5,7 @@ for (i in 1:length(args)) {
 
 suppressPackageStartupMessages({
   library(dplyr)
-  library(ggplot2, lib.loc = "/home/charlotte/R/x86_64-pc-linux-gnu-library/3.5")
+  library(ggplot2)
   library(stringr)
   library(ggbeeswarm)
 })
@@ -69,7 +69,7 @@ calcCor <- function(abundancemat, method) {
   cor(abundancemat,
       method = method, use = "pairwise.complete.obs") %>%
     as.data.frame() %>% tibble::rownames_to_column("sample1") %>%
-    tidyr::gather("sample2", "correlation", -sample1) %>%
+    tidyr::gather(key = "sample2", value = "correlation", -sample1) %>%
     tidyr::separate(sample1, into = c("sample1", "type1", "method1"), sep = "__") %>%
     tidyr::separate(sample2, into = c("sample2", "type2", "method2"), sep = "__") %>%
     tidyr::unite(col = method1, type1, method1, sep = "__") %>%
@@ -133,7 +133,9 @@ plotCorBetween <- function(cordf, ylab, title) {
                                         gsub("count__", "", method1)),
                          method2 = gsub("featurecounts", "fC", 
                                         gsub("count__", "", method2))) %>%
-           dplyr::filter(method1 < method2 & sample1 == sample2), 
+           dplyr::filter(method1 < method2 & sample1 == sample2) %>%
+           dplyr::mutate(dataset1 = factor(dataset1, levels = 
+                                             ds_order[ds_order %in% dataset1])), 
          aes(x = interaction(method1, method2), y = correlation, color = dataset1)) + 
     geom_quasirandom(size = 4, alpha = 0.8) + theme_bw() + 
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) + 
@@ -162,7 +164,7 @@ for (m in c("Pearson", "Spearman")) {
     ptx + theme(legend.position = "none"),
     pg + theme(legend.position = "none"),
     cowplot::get_legend(pg),
-    nrow = 1, rel_widths = c(1, 1, 0.5),
+    nrow = 1, rel_widths = c(1, 1.15, 0.5), align = "h", axis = "t",
     labels = c("A", "B", "")
   ))
   dev.off()
@@ -183,10 +185,9 @@ for (m in c("Pearson", "Spearman")) {
       ptxb + theme(legend.position = "none"),
       pgb + theme(legend.position = "none"),
       nrow = 1, rel_widths = c(1, 1), labels = c("A", "B"),
-      align = "h"),
-    cowplot::get_legend(pgb),
-    nrow = 1, rel_widths = c(2, 0.4),
-    labels = c("", "")
+      align = "h", axis = "tb"),
+    cowplot::get_legend(pgb), nrow = 1, rel_widths = c(2, 0.4),
+    labels = c("", ""), align = "h", axis = "t"
   ))
   dev.off()
 }

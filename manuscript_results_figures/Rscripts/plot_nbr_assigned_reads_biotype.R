@@ -5,7 +5,7 @@ for (i in 1:length(args)) {
 
 suppressPackageStartupMessages({
   library(dplyr)
-  library(ggplot2, lib.loc = "/home/charlotte/R/x86_64-pc-linux-gnu-library/3.5")
+  library(ggplot2)
   library(cowplot)
   library(stringr)
 })
@@ -62,7 +62,9 @@ tmp <- genelevel %>% dplyr::select(-gene) %>% dplyr::group_by(gene_biotype) %>%
   dplyr::filter(condition %in% conditions) %>%
   dplyr::group_by(gene_biotype) %>% 
   dplyr::mutate(maxFrac = max(proportion)) %>%
-  dplyr::ungroup()
+  dplyr::ungroup() %>% 
+  dplyr::mutate(dataset2 = factor(dataset, levels = 
+                                    ds_order[ds_order %in% dataset]))
 
 methodcols <- c(salmon = "#882E72", StringTie = "#882E72", 
                 salmonminimap2_p0.99 = "#4EB265",
@@ -104,7 +106,9 @@ g0 <-
                                      "antisense_RNA",
                                      "Mt_tRNA",
                                      "transcribed_processed_pseudogene")),
-               "other")),
+               "other")) %>%
+           dplyr::arrange(dataset2, sample) %>%
+           dplyr::mutate(sample = factor(sample, levels = unique(sample))),
          aes(x = method, y = proportion, group = gene_biotype, fill = gene_biotype)) + 
   geom_bar(stat = "identity", position = "fill") + 
   facet_wrap(~ sample, ncol = 4) + theme_bw() + 

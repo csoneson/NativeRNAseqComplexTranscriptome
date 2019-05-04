@@ -5,7 +5,7 @@ for (i in 1:length(args)) {
 
 suppressPackageStartupMessages({
   library(dplyr)
-  library(ggplot2, lib.loc = "/home/charlotte/R/x86_64-pc-linux-gnu-library/3.5")
+  library(ggplot2)
   library(stringr)
   library(cowplot)
   library(GenomicAlignments)
@@ -13,7 +13,6 @@ suppressPackageStartupMessages({
 
 labels <- strsplit(labels, ",")[[1]]
 
-print(bam)
 print(dataset)
 print(labels)
 print(title)
@@ -22,21 +21,20 @@ print(outrds)
 ################################################################################
 ## Number of covered transcripts, covered fraction
 ################################################################################
-dfct_primary <- do.call(rbind, lapply(dataset, function(ds) {
+dfct_primary <- do.call(dplyr::bind_rows, lapply(dataset, function(ds) {
   rd <- readRDS(paste0(ds, "/output/", ds, "_nbr_reads.rds"))
   rdt <- rd$txomebams_p0.99
-  do.call(rbind, lapply(names(rdt), function(nm) {
+  do.call(dplyr::bind_rows, lapply(names(rdt), function(nm) {
     rdt[[nm]]$allAlignments %>% dplyr::filter(flag %in% c(0, 16)) %>% 
       dplyr::mutate(sample = nm) %>% 
       dplyr::mutate(dataset = ds)
   }))
-})) %>%
-  dplyr::mutate(gname = substr(rname, 1, 5))
+}))
 
-dfct_longest <- do.call(rbind, lapply(dataset, function(ds) {
+dfct_longest <- do.call(dplyr::bind_rows, lapply(dataset, function(ds) {
   rd <- readRDS(paste0(ds, "/output/", ds, "_nbr_reads.rds"))
   rdt <- rd$txomebams_p0.99
-  do.call(rbind, lapply(names(rdt), function(nm) {
+  do.call(dplyr::bind_rows, lapply(names(rdt), function(nm) {
     rdt[[nm]]$allAlignments %>% 
       dplyr::select(read, flag, rname, nbrM, nbrS, nbrH, nbrD, nbrI, 
                     txLength, alignedLength) %>%
@@ -49,8 +47,7 @@ dfct_longest <- do.call(rbind, lapply(dataset, function(ds) {
       dplyr::mutate(sample = nm) %>% 
       dplyr::mutate(dataset = ds)
   }))
-})) %>%
-  dplyr::mutate(gname = substr(rname, 1, 5))
+}))
 
 plotCovFractionAll <- function(plotdf, maxLength) {
   ggplot(plotdf %>% dplyr::mutate(covFraction = (nbrM + nbrD)/txLength),

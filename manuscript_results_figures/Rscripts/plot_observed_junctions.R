@@ -6,7 +6,7 @@ for (i in 1:length(args)) {
 suppressPackageStartupMessages({
   library(dplyr)
   library(tidyr)
-  library(ggplot2, lib.loc = "/home/charlotte/R/x86_64-pc-linux-gnu-library/3.5")
+  library(ggplot2)
   library(GenomicRanges)
   library(Biostrings)
   library(BSgenome)
@@ -48,13 +48,16 @@ harmonizeDonorAcceptor <- function(ddaa, canonicalDAs) {
   }
 }
 
-illumina_files <- list.files("Illumina/STAR", 
-                             pattern = "_Aligned.sortedByCoord.out_junctions.rds", 
-                             recursive = TRUE, full.names = TRUE)
-illumina_files <- illumina_files[gsub("_Aligned.sortedByCoord.out_junctions.rds", "", 
-                                      basename(illumina_files)) %in% 
-                                   sample_annotation$sample_orig[sample_annotation$condition %in% 
-                                                                   conditions]]
+illumina_files <- 
+  list.files("Illumina/STAR", 
+             pattern = "_Aligned.sortedByCoord.out_junctions.rds", 
+             recursive = TRUE, full.names = TRUE)
+illumina_files <- 
+  illumina_files[gsub("_Aligned.sortedByCoord.out_junctions.rds", "", 
+                      basename(illumina_files)) %in% 
+                   sample_annotation$sample_orig[sample_annotation$condition %in% 
+                                                   conditions]]
+print(illumina_files)
 all_illumina_juncs <- do.call(c, lapply(illumina_files, function(f) {
   readRDS(f)
 }))
@@ -78,6 +81,7 @@ juncs <- do.call(dplyr::bind_rows, lapply(datasets, function(ds) {
     files <- files[names(files) %in% 
                      sample_annotation$sample_orig[sample_annotation$condition %in% conditions]]
   }
+  print(files)
   do.call(dplyr::bind_rows, lapply(names(files), function(nm) {
     print(paste0("   ", nm))
     f <- readRDS(files[nm])
@@ -88,7 +92,10 @@ juncs <- do.call(dplyr::bind_rows, lapply(datasets, function(ds) {
     gs <- suppressWarnings(getSeq(genome, f))
     donors <- as.character(Biostrings::subseq(gs, 1, 2))
     acceptors <- as.character(Biostrings::subseq(gs, width(gs) - 1, width(gs)))
-    data.frame(nbrCovReads = mcols(f)$score,
+    data.frame(chromosome = as.character(seqnames(f)),
+               start = start(f),
+               end = end(f),
+               nbrCovReads = mcols(f)$score,
                distToClosestRefJunc = mcols(f)$distToClosestRefJunc,
                detByIllumina = f %in% all_illumina_juncs, 
                donorAcceptor = vapply(paste0(donors, acceptors), 
@@ -121,15 +128,16 @@ getDonorAcceptorDf <- function(juncs, minCoverage) {
   juncs %>% dplyr::filter(nbrCovReads >= minCoverage) %>%
     dplyr::mutate(jType = ifelse(distToClosestRefJunc == 0, "annotatedExact",
                                  ifelse(distToClosestRefJunc <= 5, 
-                                        "annotatedLessThan5", "annotatedMoreThan5"))) %>%
+                                        "annotatedLessThan5", 
+                                        "annotatedMoreThan5"))) %>%
     dplyr::group_by(sample, dataset, jType, donorAcceptor) %>%
     dplyr::tally() %>%
     dplyr::mutate(donorAcceptor = factor(donorAcceptor, levels = c(setdiff(unique(juncs$donorAcceptor), "GTAG"), "GTAG"))) %>%
     dplyr::ungroup() %>%
+    dplyr::mutate(jType = as.character(jType)) %>%
     dplyr::mutate(jType = convertJType[jType]) %>%
-    dplyr::mutate(jType = factor(jType, levels = jTypeLevels)) %>%
-    dplyr::mutate(dataset = factor(dataset, levels = c(setdiff(levels(factor(dataset)), 
-                                                               "Illumina"), "Illumina")))
+    dplyr::mutate(jType = factor(jType, levels = jTypeLevels)) %>% 
+    dplyr::mutate(dataset = factor(dataset, levels = ds_order[ds_order %in% dataset]))
 }
 
 plots <- list()
@@ -191,15 +199,42 @@ getJuncDf <- function(juncs, minCoverage) {
                                                 distToClosestRefJunc > 0),
                      annotatedMoreThan5 = sum(distToClosestRefJunc > 5)) %>%
     tidyr::gather(jType, nbrJunctions, -dataset, -sample) %>%
+    dplyr::mutate(jType = as.character(jType)) %>%
     dplyr::mutate(jType = convertJType[jType]) %>%
     dplyr::mutate(jType = factor(jType, levels = jTypeLevels)) %>%
+    dplyr::ungroup() %>% 
+    dplyr::mutate(
+      dataset = factor(dataset, levels = ds_order[ds_order %in% dataset])
+    )
+}
+
+## Summarize on dataset-level
+getJuncDfds <- function(juncs, minCoverage) {
+  juncs %>% 
+    dplyr::group_by(dataset, chromosome, start, end,
+                    distToClosestRefJunc, detByIllumina,
+                    donorAcceptor) %>%
+    dplyr::summarize(nbrCovReads = sum(nbrCovReads)) %>%
     dplyr::ungroup() %>%
-    dplyr::mutate(dataset = factor(dataset, levels = c(setdiff(levels(factor(dataset)), 
-                                                               "Illumina"), "Illumina")))
+    dplyr::filter(nbrCovReads >= minCoverage) %>%
+    dplyr::group_by(dataset) %>% 
+    dplyr::summarize(annotatedExact = sum(distToClosestRefJunc == 0),
+                     annotatedLessThan5 = sum(distToClosestRefJunc <= 5 & 
+                                                distToClosestRefJunc > 0),
+                     annotatedMoreThan5 = sum(distToClosestRefJunc > 5)) %>%
+    tidyr::gather(jType, nbrJunctions, -dataset) %>%
+    dplyr::mutate(jType = as.character(jType)) %>%
+    dplyr::mutate(jType = convertJType[jType]) %>%
+    dplyr::mutate(jType = factor(jType, levels = jTypeLevels)) %>%
+    dplyr::ungroup() %>% 
+    dplyr::mutate(
+      dataset = factor(dataset, levels = ds_order[ds_order %in% dataset])
+    )
 }
 
 for (minCov in c(1, 5)) {
   df <- getJuncDf(juncs, minCov)
+  dfds <- getJuncDfds(juncs, minCov)
   
   plots[[paste0("junctions_minCov", minCov)]] <- 
     ggplot(df %>% dplyr::mutate(sample = removeDatasetFromSample(sample, dataset)),
@@ -210,6 +245,21 @@ for (minCov in c(1, 5)) {
     facet_grid(~ dataset, scales = "free_x", space = "free_x") + 
     theme(legend.position = "bottom",
           strip.text = element_text(size = 8)) + 
+    xlab("") + ylab("Fraction of junctions") + 
+    scale_fill_manual(name = "", values = jTypeCols) + 
+    scale_color_manual(name = "", values = jTypeCols) + 
+    ggtitle(paste0("Junctions supported by at least ", minCov, 
+                   ifelse(minCov == 1, " read", " reads")))
+  
+  plots[[paste0("junctions_minCov", minCov, "_ds")]] <- 
+    ggplot(dfds,
+           aes(x = dataset, y = nbrJunctions, fill = jType, color = jType)) + 
+    geom_bar(stat = "identity", position = "fill") + 
+    theme_bw() + 
+    scale_y_continuous(expand = c(0, 0, 0.05, 0)) + 
+    theme(legend.position = "bottom",
+          strip.text = element_text(size = 8),
+          axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) + 
     xlab("") + ylab("Fraction of junctions") + 
     scale_fill_manual(name = "", values = jTypeCols) + 
     scale_color_manual(name = "", values = jTypeCols) + 
@@ -234,11 +284,13 @@ getIlmnJuncDf <- function(juncs, minCoverage) {
                                                 distToClosestRefJunc > 0),
                      annotatedMoreThan5 = sum(distToClosestRefJunc > 5)) %>%
     tidyr::gather(jType, nbrJunctions, -dataset, -sample, -detByIllumina) %>%
+    dplyr::mutate(jType = as.character(jType)) %>%
     dplyr::mutate(jType = convertJType[jType]) %>%
     dplyr::mutate(jType = factor(jType, levels = jTypeLevels)) %>%
-    dplyr::ungroup() %>%
-    dplyr::mutate(dataset = factor(dataset, levels = c(setdiff(levels(factor(dataset)), 
-                                                               "Illumina"), "Illumina")))
+    dplyr::ungroup() %>% 
+    dplyr::mutate(
+      dataset = factor(dataset, levels = ds_order[ds_order %in% dataset])
+    )
 }
 
 for (minCov in c(1, 5)) {
@@ -299,6 +351,31 @@ print(cowplot::plot_grid(
   ntxeq$ptxeqzoom + ylab("Number of transcripts\nin equivalence class"), 
   ncol = 1, labels = c("A", "B", "", "C", "D"), rel_heights = c(1, 1, 0.2, 1, 1)
 ))
+dev.off()
+
+png(gsub("\\.rds$", "_junctions_minCov1_5_ds.png", outrds),
+    width = 10, height = 8, unit = "in", res = 400)
+print(
+  cowplot::plot_grid(
+    cowplot::plot_grid(
+      cowplot::plot_grid(
+        plots[["junctions_minCov1_ds"]] + theme(legend.position = "none") + 
+          ylab("Fraction of\njunctions"),
+        plots[["junctions_minCov5_ds"]] + theme(legend.position = "none") + 
+          ylab("Fraction of\njunctions"),
+        nrow = 1, labels = c("A", "B"), align = "h", axis = "tb"),
+      cowplot::get_legend(plots[["junctions_minCov5_ds"]]),
+      ncol = 1, rel_heights = c(1, 0.2)
+    ),
+    cowplot::plot_grid(
+      ntxeq$ptxeqfullds + ylab("Number of transcripts\nin equivalence class"),
+      ntxeq$ptxeqzoomds + ylab("Number of transcripts\nin equivalence class"),
+      labels = c("C", "D"), nrow = 1, rel_widths = c(1, 1)
+    ),
+    ncol = 1, rel_heights = c(1.2, 1)
+  )
+)
+dev.off()
 
 saveRDS(NULL, file = outrds)
 date()

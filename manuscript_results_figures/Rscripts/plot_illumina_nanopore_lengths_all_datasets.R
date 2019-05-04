@@ -70,29 +70,44 @@ readInfo <- do.call(rbind, lapply(datasets, function(ds) {
   dplyr::rename(tx_read_length = readLength) %>%
   dplyr::mutate(dtype = "Nanopore read lengths")
 
+readInfo <- readInfo %>%
+  dplyr::mutate(category = "Unaligned") %>%
+  dplyr::mutate(category = replace(
+    category, alignedGenome & nbrSupplementaryAlignments == 0, 
+    "Aligned, without supplementary alignments")) %>%
+  dplyr::mutate(category = replace(
+    category, alignedGenome & nbrSupplementaryAlignments > 0,
+    "Aligned, with supplementary alignment(s)"))
+
 png(gsub("\\.rds$", "_nanoporeread_density_byalignment.png", outrds), 
     width = 7, height = 5, unit = "in", res = 400)
 print(ggplot(readInfo %>%
-               dplyr::mutate(category = "Unaligned") %>%
-               dplyr::mutate(category = replace(
-                 category, alignedGenome & nbrSupplementaryAlignments == 0, 
-                 "Aligned, without supplementary alignments")) %>%
-               dplyr::mutate(category = replace(
-                 category, alignedGenome & nbrSupplementaryAlignments > 0,
-                 "Aligned, with supplementary alignment(s)")),
+               dplyr::mutate(dataset = factor(dataset, levels = 
+                                                ds_order[ds_order %in% dataset])),
              aes(x = tx_read_length, color = category, group = category)) + 
         geom_line(stat = "density", size = 1.25) + theme_bw() + 
+        scale_color_manual(values = c("Unaligned" = "lightblue", 
+                                      "Aligned, without supplementary alignments" = "#E8601C",
+                                      "Aligned, with supplementary alignment(s)" = "#7BAFDE"), 
+                           name = "") + 
         scale_x_log10() + xlab("Read length") + 
         theme(legend.position = "bottom") + 
-        scale_color_discrete(name = "") + 
         facet_wrap(~ dataset))
 dev.off()
 
 ## Plot distribution of transcript lengths from Illumina (weighted by
 ## abundance), overlay distribution of Nanopore read lengths
+plotdf <- dplyr::bind_rows(txlengths_illumina, readInfo %>% dplyr::select(-category)) %>%
+  dplyr::mutate(dataset = factor(dataset, levels = ds_order[ds_order %in% dataset]))
+## Only aligned reads
+plotdfaligned <- dplyr::bind_rows(txlengths_illumina, 
+                                  readInfo %>% dplyr::filter(category != "Unaligned") %>%
+                                    dplyr::select(-category)) %>%
+  dplyr::mutate(dataset = factor(dataset, levels = ds_order[ds_order %in% dataset]))
+
 png(gsub("\\.rds$", "_illuminatx_nanoporeread_density_byds.png", outrds), 
     width = 7, height = 5, unit = "in", res = 400)
-dbyds <- ggplot(dplyr::bind_rows(txlengths_illumina, readInfo),
+dbyds <- ggplot(plotdf,
                 aes(x = tx_read_length, color = dataset, group = dataset)) + 
   geom_line(stat = "density", size = 1.25) + theme_bw() + 
   scale_x_log10() + xlab("Transcript/read length") + 
@@ -100,9 +115,91 @@ dbyds <- ggplot(dplyr::bind_rows(txlengths_illumina, readInfo),
 print(dbyds)
 dev.off()
 
+png(gsub("\\.rds$", "_illuminatx_nanoporeread_density_byds_onlyaligned.png", outrds), 
+    width = 7, height = 5, unit = "in", res = 400)
+dbydsaligned <- ggplot(plotdfaligned,
+                       aes(x = tx_read_length, color = dataset, group = dataset)) + 
+  geom_line(stat = "density", size = 1.25) + theme_bw() + 
+  scale_x_log10() + xlab("Transcript/read length") + 
+  scale_color_manual(values = ds_colors, name = "")
+print(dbydsaligned)
+dev.off()
+
+png(gsub("\\.rds$", "_illuminatx_nanoporeread_density_linear_byds.png", outrds), 
+    width = 7, height = 5, unit = "in", res = 400)
+dlinearbyds <- ggplot(plotdf,
+                      aes(x = tx_read_length, color = dataset, group = dataset)) + 
+  geom_line(stat = "density", size = 1.25) + theme_bw() + 
+  xlab("Transcript/read length") + xlim(0, 1.5e4) + 
+  scale_color_manual(values = ds_colors, name = "")
+print(dlinearbyds)
+dev.off()
+
+png(gsub("\\.rds$", "_illuminatx_nanoporeread_density_linear_byds_onlyaligned.png", outrds), 
+    width = 7, height = 5, unit = "in", res = 400)
+dlinearbydsaligned <- ggplot(plotdfaligned,
+                             aes(x = tx_read_length, color = dataset, group = dataset)) + 
+  geom_line(stat = "density", size = 1.25) + theme_bw() + 
+  xlab("Transcript/read length") + xlim(0, 1.5e4) + 
+  scale_color_manual(values = ds_colors, name = "")
+print(dlinearbydsaligned)
+dev.off()
+
+png(gsub("\\.rds$", "_illuminatx_nanoporeread_violin_byds.png", outrds), 
+    width = 7, height = 5, unit = "in", res = 400)
+dviolinbyds <- ggplot(plotdf,
+                      aes(x = dataset, y = tx_read_length,
+                          fill = dataset)) + 
+  geom_violin(alpha = 0.5) + theme_bw() + 
+  scale_y_log10() + ylab("Transcript/read length") + xlab("") + 
+  scale_fill_manual(values = ds_colors, name = "") + 
+  theme(legend.position = "none", 
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+print(dviolinbyds)
+dev.off()
+
+png(gsub("\\.rds$", "_illuminatx_nanoporeread_violin_byds_onlyaligned.png", outrds), 
+    width = 7, height = 5, unit = "in", res = 400)
+dviolinbydsaligned <- ggplot(plotdfaligned,
+                             aes(x = dataset, y = tx_read_length,
+                                 fill = dataset)) + 
+  geom_violin(alpha = 0.5) + theme_bw() + 
+  scale_y_log10() + ylab("Transcript/read length") + xlab("") + 
+  scale_fill_manual(values = ds_colors, name = "") + 
+  theme(legend.position = "none", 
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+print(dviolinbydsaligned)
+dev.off()
+
+png(gsub("\\.rds$", "_illuminatx_nanoporeread_violin_linear_byds.png", outrds), 
+    width = 7, height = 5, unit = "in", res = 400)
+dviolinlinearbyds <- ggplot(plotdf,
+                            aes(x = dataset, y = tx_read_length,
+                                fill = dataset)) + 
+  geom_violin(alpha = 0.5) + theme_bw() + ylim(0, 1.5e4) + 
+  ylab("Transcript/read length") + xlab("") + 
+  scale_fill_manual(values = ds_colors, name = "") + 
+  theme(legend.position = "none", 
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+print(dviolinlinearbyds)
+dev.off()
+
+png(gsub("\\.rds$", "_illuminatx_nanoporeread_violin_linear_byds_onlyaligned.png", outrds), 
+    width = 7, height = 5, unit = "in", res = 400)
+dviolinlinearbydsaligned <- ggplot(plotdfaligned,
+                                   aes(x = dataset, y = tx_read_length,
+                                       fill = dataset)) + 
+  geom_violin(alpha = 0.5) + theme_bw() + ylim(0, 1.5e4) + 
+  ylab("Transcript/read length") + xlab("") + 
+  scale_fill_manual(values = ds_colors, name = "") + 
+  theme(legend.position = "none", 
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+print(dviolinlinearbydsaligned)
+dev.off()
+
 png(gsub("\\.rds$", "_illuminatx_nanoporeread_density_bysample.png", outrds), 
     width = 7, height = 5, unit = "in", res = 400)
-ggplot(dplyr::bind_rows(txlengths_illumina, readInfo),
+ggplot(plotdf,
        aes(x = tx_read_length, color = dataset, group = sample)) + 
   geom_line(stat = "density", size = 1) + theme_bw() + 
   scale_x_log10() + xlab("Transcript/read length") + 
@@ -111,7 +208,7 @@ dev.off()
 
 png(gsub("\\.rds$", "_illuminatx_nanoporeread_ridge_byds.png", outrds), 
     width = 7, height = 7, unit = "in", res = 400)
-ggplot(dplyr::bind_rows(txlengths_illumina, readInfo),
+ggplot(plotdf,
        aes(y = dataset, x = tx_read_length, fill = dataset, 
            color = dataset)) + 
   geom_density_ridges(scale = 1.5) + theme_bw() + 
@@ -121,7 +218,14 @@ ggplot(dplyr::bind_rows(txlengths_illumina, readInfo),
 dev.off()
 
 plots <- list(
-  illuminatx_nanoporeread_density_byds = dbyds
+  illuminatx_nanoporeread_density_byds = dbyds,
+  illuminatx_nanoporeread_density_linear_byds = dlinearbyds,
+  illuminatx_nanoporeread_violin_byds = dviolinbyds,
+  illuminatx_nanoporeread_violin_linear_byds = dviolinlinearbyds,
+  illuminatx_nanoporeread_density_byds_aligned = dbydsaligned,
+  illuminatx_nanoporeread_density_linear_byds_aligned = dlinearbydsaligned,
+  illuminatx_nanoporeread_violin_byds_aligned = dviolinbydsaligned,
+  illuminatx_nanoporeread_violin_linear_byds_aligned = dviolinlinearbydsaligned
 )
 
 saveRDS(plots, file = outrds)

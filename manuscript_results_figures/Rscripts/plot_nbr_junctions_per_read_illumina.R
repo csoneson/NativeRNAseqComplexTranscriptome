@@ -6,7 +6,7 @@ for (i in 1:length(args)) {
 suppressPackageStartupMessages({
   library(GenomicAlignments)
   library(dplyr)
-  library(ggplot2, lib.loc = "/home/charlotte/R/x86_64-pc-linux-gnu-library/3.5")
+  library(ggplot2)
   library(cowplot)
   library(stringr)
 })
@@ -22,7 +22,7 @@ readBam <- function(bamfile) {
   bf <- BamFile(bamfile, yieldSize = 5e6)
   bam <- readGAlignments(bf, use.names = TRUE,
                          param = ScanBamParam(tag = c("NM"),
-                                              what = c("qname","flag", "rname", 
+                                              what = c("qname", "flag", "rname", 
                                                        "pos", "mapq")))
   ops <- GenomicAlignments::CIGAR_OPS
   wdths <- GenomicAlignments::explodeCigarOpLengths(cigar(bam), ops = ops)
@@ -100,8 +100,8 @@ print(ggplot(djunc,
         theme_bw() + facet_wrap(~ sample) + 
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
               legend.position = "none") +
-        scale_color_manual(values = c(Illumina = "#B3B3B3"), name = "") + 
-        scale_fill_manual(values = c(Illumina = "#B3B3B3"), name = "") + 
+        scale_color_manual(values = ds_colors, name = "") + 
+        scale_fill_manual(values = ds_colors, name = "") + 
         scale_y_continuous(expand = c(0, 0, 0.05, 0)) + 
         xlab("Number of spanned junctions") + ylab("Fraction of reads"))
 dev.off()

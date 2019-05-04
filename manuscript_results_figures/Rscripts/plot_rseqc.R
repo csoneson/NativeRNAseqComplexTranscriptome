@@ -5,7 +5,7 @@ for (i in 1:length(args)) {
 
 suppressPackageStartupMessages({
   library(dplyr)
-  library(ggplot2, lib.loc = "/home/charlotte/R/x86_64-pc-linux-gnu-library/3.5")
+  library(ggplot2)
   library(cowplot)
   library(tidyr)
 })
@@ -30,7 +30,10 @@ df <- data.frame(sample = gsub("0918\\.A_", "0918\\.A-", gsub("^V", "", rowLabel
   dplyr::left_join(sample_annotation %>% 
                      dplyr::select(sample_remap, condition, dataset), 
                    by = c("sample" = "sample_remap")) %>%
-  dplyr::filter(dataset %in% remapds[datasets] & condition %in% conditions)
+  dplyr::filter(dataset %in% remapds[datasets] & condition %in% conditions) %>% 
+  dplyr::mutate(
+    dataset = factor(dataset, levels = ds_order[ds_order %in% dataset])
+  )
 
 png(gsub("\\.rds$", "_gene_body_coverage.png", outrds), width = 6, height = 3.5,
     unit = "in", res = 400)

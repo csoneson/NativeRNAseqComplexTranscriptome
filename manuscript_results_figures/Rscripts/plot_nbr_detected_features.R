@@ -47,6 +47,7 @@ txlevel <- Reduce(function(...) dplyr::full_join(..., by = "tx"),
   tibble::column_to_rownames("tx")
 txlevel[is.na(txlevel)] <- 0
 txlevel <- round(txlevel)
+
 genelevel <- Reduce(function(...) dplyr::full_join(..., by = "gene"), 
                     lapply(abundanceInfo, function(ab) {
                       ab$gene_abundances %>% tibble::rownames_to_column("gene")
@@ -55,8 +56,32 @@ genelevel <- Reduce(function(...) dplyr::full_join(..., by = "gene"),
 genelevel[is.na(genelevel)] <- 0
 genelevel <- round(genelevel)
 
-png(gsub("\\.rds$", "_cumulative_abundance_genes.png", outrds), width = 7, 
-    height = 7, unit = "in", res = 400)
+## Summarize by dataset
+summarize_by_ds <- function(countmatrix, sample_annotation, conditions) {
+  tmp <- data.frame(countmatrix, check.names = FALSE, stringsAsFactors = FALSE) %>%
+    tibble::rownames_to_column("feature") %>%
+    tidyr::gather(key = "sample", value = "count", -feature) %>%
+    tidyr::separate(sample, into = c("sample", "mtype", "method"), sep = "__") %>%
+    dplyr::mutate(sample = remap[sample]) %>%
+    dplyr::left_join(sample_annotation %>% dplyr::select(sample_remap, dataset, condition),
+                     by = c("sample" = "sample_remap")) %>%
+    dplyr::filter(condition %in% conditions)
+  tmpds <- tmp %>% dplyr::group_by(feature, mtype, method, dataset) %>%
+    dplyr::summarize(count = sum(count))
+  tmpds %>% 
+    dplyr::ungroup() %>%
+    tidyr::unite(col = "dataset", dataset, mtype, method, sep = "__") %>%
+    tidyr::spread(dataset, count) %>%
+    as.data.frame() %>%
+    tibble::column_to_rownames("feature") %>%
+    as.matrix()
+}
+txlevel_ds <- summarize_by_ds(txlevel, sample_annotation, conditions)
+genelevel_ds <- summarize_by_ds(genelevel, sample_annotation, conditions)
+
+
+png(gsub("\\.rds$", "_cumulative_abundance_genes.png", outrds), width = 8, 
+    height = 6, unit = "in", res = 400)
 gl <- data.frame(apply(genelevel[rowSums(genelevel) > 0, ], 
                        2, function(w) cumsum(sort(w, decreasing = TRUE))/sum(w)), 
                  check.names = FALSE) %>%
@@ -69,7 +94,9 @@ gl <- data.frame(apply(genelevel[rowSums(genelevel) > 0, ],
                    by = c("sample" = "sample_remap")) %>%
   dplyr::filter(condition %in% conditions) %>%
   dplyr::filter(method %in% c("salmon31", "salmon"))
-ggplot(gl, aes(x = x, y = cumulativeAbundance, group = sample, color = dataset)) + 
+ggplot(gl %>%
+         dplyr::mutate(dataset = factor(dataset, levels = ds_order[ds_order %in% dataset])),
+       aes(x = x, y = cumulativeAbundance, group = sample, color = dataset)) + 
   geom_line(size = 1.1) + coord_cartesian(xlim = c(0, 0.25)) + 
   theme_bw() + xlab("Fraction of top expressed genes") + 
   ylab("Cumulative abundance") + 
@@ -80,7 +107,7 @@ dev.off()
 
 ## Number of detected genes/transcripts and number of reads
 totGenes <- 
-  rbind(
+  dplyr::bind_rows(
     data.frame(totFeatures = colSums(genelevel >= 1), 
                method = paste0(colnames(genelevel), "__totFeatures"), 
                stringsAsFactors = FALSE),
@@ -89,7 +116,7 @@ totGenes <-
                stringsAsFactors = FALSE)
   ) %>%
   tidyr::separate(method, into = c("sample", "type", "method", "fType"), sep = "__") %>%
-  dplyr::mutate(sample = remap[sample])%>% 
+  dplyr::mutate(sample = remap[sample]) %>% 
   dplyr::left_join(sample_annotation %>% dplyr::select(sample_remap, dataset, condition),
                    by = c("sample" = "sample_remap")) %>%
   dplyr::filter(condition %in% conditions) %>%
@@ -116,6 +143,44 @@ totGenes <-
                                "Number of detected genes, wubminimap2",
                                "Number of detected genes, StringTie")
     )
+  ) %>% 
+  dplyr::mutate(
+    dataset = factor(dataset, levels = ds_order[ds_order %in% dataset])
+  )
+
+## On dataset level
+totGenes_ds <- 
+  data.frame(totFeatures = colSums(genelevel_ds >= 1), 
+             method = paste0(colnames(genelevel_ds), "__totFeatures"), 
+             stringsAsFactors = FALSE) %>%
+  tidyr::separate(method, into = c("dataset", "type", "method", "fType"), 
+                  sep = "__") %>%
+  dplyr::select(dataset, method, fType, totFeatures) %>%
+  dplyr::mutate(
+    method = replace(method, method == "featurecountsminimap2primary",
+                     "Number of detected genes, fCminimap2primary"),
+    method = replace(method, method == "salmon31",
+                     "Number of detected genes, salmon31"),
+    method = replace(method, method == "salmonminimap2_p0.99",
+                     "Number of detected genes, salmonminimap2_p0.99"),
+    method = replace(method, method == "wubminimap2",
+                     "Number of detected genes, wubminimap2"),
+    method = replace(method, method == "salmon",
+                     "Number of detected genes, salmon31"),
+    method = replace(method, method == "StringTie",
+                     "Number of detected genes, StringTie")
+  ) %>%
+  dplyr::mutate(
+    method = factor(method, 
+                    levels = c("Number of detected genes, salmonminimap2_p0.99",
+                               "Number of detected genes, fCminimap2primary",
+                               "Number of detected genes, salmon31",
+                               "Number of detected genes, wubminimap2",
+                               "Number of detected genes, StringTie")
+    )
+  ) %>% 
+  dplyr::mutate(
+    dataset = factor(dataset, levels = ds_order[ds_order %in% dataset])
   )
 
 totTx <- 
@@ -128,7 +193,7 @@ totTx <-
                stringsAsFactors = FALSE)
   ) %>%
   tidyr::separate(method, into = c("sample", "type", "method", "fType"), sep = "__") %>%
-  dplyr::mutate(sample = remap[sample])%>% 
+  dplyr::mutate(sample = remap[sample]) %>% 
   dplyr::left_join(sample_annotation %>% dplyr::select(sample_remap, dataset, condition),
                    by = c("sample" = "sample_remap")) %>%
   dplyr::filter(condition %in% conditions) %>%
@@ -152,7 +217,43 @@ totTx <-
                                "Number of detected transcripts, wubminimap2",
                                "Number of detected transcripts, StringTie")
     )
+  ) %>% 
+  dplyr::mutate(
+    dataset = factor(dataset, levels = ds_order[ds_order %in% dataset])
   )
+
+## On dataset level
+totTx_ds <- 
+  data.frame(totFeatures = colSums(txlevel_ds >= 1), 
+             method = paste0(colnames(txlevel_ds), "__totFeatures"), 
+             stringsAsFactors = FALSE) %>%
+  tidyr::separate(method, into = c("dataset", "type", "method", "fType"), 
+                  sep = "__") %>%
+  dplyr::select(dataset, method, fType, totFeatures) %>%
+  dplyr::mutate(
+    method = replace(method, method == "salmon31",
+                     "Number of detected transcripts, salmon31"),
+    method = replace(method, method == "salmonminimap2_p0.99",
+                     "Number of detected transcripts, salmonminimap2_p0.99"),
+    method = replace(method, method == "wubminimap2",
+                     "Number of detected transcripts, wubminimap2"),
+    method = replace(method, method == "salmon",
+                     "Number of detected transcripts, salmon31"),
+    method = replace(method, method == "StringTie",
+                     "Number of detected transcripts, StringTie")
+  ) %>%
+  dplyr::mutate(
+    method = factor(method, 
+                    levels = c("Number of detected transcripts, salmonminimap2_p0.99",
+                               "Number of detected transcripts, salmon31",
+                               "Number of detected transcripts, wubminimap2",
+                               "Number of detected transcripts, StringTie")
+    )
+  ) %>% 
+  dplyr::mutate(
+    dataset = factor(dataset, levels = ds_order[ds_order %in% dataset])
+  )
+
 
 totals <- list(transcripts = totTx, 
                genes = totGenes)
@@ -180,7 +281,7 @@ for (tl in names(totals)) {
 }
 
 gglayers <- list(
-  geom_bar(stat = "identity", position = "dodge"),
+  geom_bar(stat = "identity", position = position_dodge2(preserve = "single")),
   theme_bw(),
   scale_y_continuous(expand = c(0, 0, 0.05, 0)),
   facet_grid(~ dataset, scales = "free_x", space = "free_x"),
@@ -202,6 +303,31 @@ pg <- ggplot(totals[["genes"]] %>% dplyr::filter(fType == "totFeatures") %>%
                  fill = gsub(paste0("Number of detected genes, "), "", method))) +
   gglayers + 
   ylab(paste0("Number of detected features")) + ggtitle("Genes")
+
+## Dataset level
+ptds <- ggplot(totTx_ds, aes(x = dataset, y = totFeatures,
+                             fill = gsub(paste0("Number of detected transcripts, "), "", method))) + 
+  geom_bar(stat = "identity", position = position_dodge2(preserve = "single")) +
+  theme_bw() +
+  scale_y_continuous(expand = c(0, 0, 0.05, 0)) + 
+  scale_fill_manual(values = methodcols, name = "") + 
+  theme(legend.position = "bottom",
+        strip.text = element_text(size = 8),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) + 
+  guides(fill = guide_legend(nrow = 1, byrow = TRUE)) + 
+  xlab("") + ylab("Number of detected features") + ggtitle("Transcripts")
+
+pgds <- ggplot(totGenes_ds, aes(x = dataset, y = totFeatures,
+                             fill = gsub(paste0("Number of detected genes, "), "", method))) + 
+  geom_bar(stat = "identity", position = position_dodge2(preserve = "single")) +
+  theme_bw() +
+  scale_y_continuous(expand = c(0, 0, 0.05, 0)) + 
+  scale_fill_manual(values = methodcols, name = "") + 
+  theme(legend.position = "bottom",
+        strip.text = element_text(size = 8),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) + 
+  guides(fill = guide_legend(nrow = 1, byrow = TRUE)) + 
+  xlab("") + ylab("Number of detected features") + ggtitle("Genes")
 
 ################################################################################
 ## Subsampling - saturation
@@ -238,7 +364,7 @@ subfracs <- c(seq(from = 0.001, to = 0.025, length.out = 10),
               c(0.035, 0.045, 0.06, 0.08), 
               seq(from = 0.1, to = 1, by = 0.05))
 
-subsampling <- do.call(rbind, lapply(subfracs, function(i) {
+subsampling <- do.call(dplyr::bind_rows, lapply(subfracs, function(i) {
   print(i)
   txmat <- DropletUtils::downsampleMatrix(txCountMatrix, prop = i, bycol = TRUE)
   genemat <- DropletUtils::downsampleMatrix(geneCountMatrix, prop = i, bycol = TRUE)
@@ -256,7 +382,10 @@ subsampling <- do.call(rbind, lapply(subfracs, function(i) {
                     sep = "_", remove = FALSE) %>%
     dplyr::mutate(sampleFrac = i) %>%
     dplyr::select(-condition)
-})) 
+})) %>% 
+  dplyr::mutate(
+    dataset = factor(dataset, levels = ds_order[ds_order %in% dataset])
+  )
 
 png(gsub("\\.rds$", "_transcript_detection_saturation.png", outrds),
     width = 15, height = 6, unit = "in", res = 400)
@@ -288,7 +417,39 @@ q23l <- cowplot::plot_grid(
 print(q23l)
 dev.off()
 
-dsrep_colors <- structure(rep("black", length(unique(paste0(subsampling$dataset, subsampling$replicate)))), names = unique(paste0(subsampling$dataset, subsampling$replicate)))
+png(gsub("\\.rds$", "_transcript_detection_saturation_dslevel.png", outrds),
+    width = 15, height = 6, unit = "in", res = 400)
+q2dsl <- ggplot(subsampling %>% dplyr::filter(nReadsTx < 3e6) %>%
+                  dplyr::filter(replicate == "sum") %>% 
+                  dplyr::filter(dataset == "Illumina" | method == "salmonminimap2_p0.99"), 
+                aes(x = nReadsTx, y = nTx, group = dataset, color = dataset)) + 
+  geom_line(color = "black") + geom_point(size = 2.5) + 
+  scale_color_manual(values = ds_colors, name = "") + 
+  theme_bw() + xlab("Sampled number of assigned reads") + 
+  theme(legend.position = "bottom") + ggtitle("Transcripts") + 
+  ylab("Number of detected features")
+q3dsl <- ggplot(subsampling %>% dplyr::filter(nReadsGene < 3e6) %>%
+                  dplyr::filter(replicate == "sum") %>% 
+                  dplyr::filter(dataset == "Illumina" | method == "salmonminimap2_p0.99"), 
+                aes(x = nReadsGene, y = nGene, group = dataset, color = dataset)) + 
+  geom_line(color = "black") + geom_point(size = 2.5) + 
+  scale_color_manual(values = ds_colors, name = "") + 
+  theme_bw() + xlab("Sampled number of assigned reads") + 
+  theme(legend.position = "bottom") + ggtitle("Genes") + 
+  ylab("Number of detected features")
+q23dsl <- cowplot::plot_grid(q2dsl + theme(legend.position = "none"),
+                             q3dsl + theme(legend.position = "none"),
+                             nrow = 1, labels = c("D", "E"))
+q23ldsl <- cowplot::plot_grid(
+  q23dsl, cowplot::get_legend(q2dsl + guides(colour = guide_legend(override.aes = 
+                                                                     list(size = 4)))), 
+  ncol = 1, rel_heights = c(1, 0.15), labels = "")
+print(q23ldsl)
+dev.off()
+
+dsrep_colors <- structure(rep("black", length(unique(paste0(subsampling$dataset, 
+                                                            subsampling$replicate)))), 
+                          names = unique(paste0(subsampling$dataset, subsampling$replicate)))
 idx <- grep("sum$", names(dsrep_colors), value = TRUE)
 dsrep_colors[idx] <- ds_colors[gsub("sum$", "", idx)]
 png(gsub("\\.rds$", "_transcript_detection_saturation_byds.png", outrds),
@@ -329,15 +490,11 @@ dev.off()
 
 ################################################################################
 ## Detection rate by transcript length
-txl <- txlevel %>% 
+txltmp <- as.data.frame(txCountMatrix) %>% 
   tibble::rownames_to_column("tx") %>%
   tidyr::gather(key = sample, value = abundance, -tx) %>%
   tidyr::separate(sample, into = c("sample", "dType", "method"), sep = "__") %>%
-  dplyr::mutate(sample = remap[sample]) %>%
-  dplyr::left_join(sample_annotation %>% dplyr::select(sample_remap, dataset, 
-                                                       condition),
-                   by = c("sample" = "sample_remap")) %>%
-  dplyr::filter(condition %in% conditions) %>%
+  tidyr::separate(sample, into = c("dataset", "condition", "replicate"), sep = "_") %>%
   dplyr::left_join(tx2gene %>% dplyr::select(tx, txlength) %>%
                      dplyr::mutate(tx = gsub("\\.[0-9]+$", "", tx)),
                    by = "tx") %>%
@@ -345,18 +502,23 @@ txl <- txlevel %>%
                 cuts = c(0, 400, 800, 1200, 1600, 2000, 2400, 2800, 
                          3200, 3600, max(txlength + 1)))) %>%
   dplyr::filter(method == "salmonminimap2_p0.99" | (dataset == "Illumina" & 
-                                                      method == "salmon")) %>%
-  dplyr::group_by(sample, dataset, lengthbin) %>%
+                                                      method == "salmon"))
+
+txl <- txltmp %>%
+  dplyr::filter(replicate == "sum") %>%
+  dplyr::group_by(dataset, lengthbin, condition, dType, method) %>%
   dplyr::summarize(n = length(abundance),
                    detRate = mean(abundance >= 1)) %>%
-  dplyr::group_by(dataset, lengthbin) %>%
-  dplyr::summarize(detRate = mean(detRate), 
-                   n = mean(n))
+  dplyr::ungroup() %>%
+  dplyr::mutate(
+    dataset = factor(dataset, levels = ds_order[ds_order %in% dataset])
+  )
 
 png(gsub("\\.rds$", "_detrate_by_length.png", outrds), 
     width = 12, height = 4, unit = "in", res = 400)
 drbl <- ggplot(txl, aes(x = lengthbin, y = detRate)) + 
-  geom_bar(aes(fill = dataset), stat = "identity", position = "dodge") + theme_bw() + 
+  geom_bar(aes(fill = dataset), stat = "identity", position = "dodge") + 
+  theme_bw() + 
   scale_fill_manual(values = ds_colors, name = "") + 
   facet_wrap(~ dataset, nrow = 1) + 
   xlab("Transcript length") + ylab("Transcript detection rate") + 
@@ -383,6 +545,24 @@ print(
 )
 dev.off()
 
+png(gsub("\\.rds$", paste0("_nbr_detected_features_byds.png"), outrds), 
+    width = 12, height = 14, unit = "in", res = 400)
+print(
+  cowplot::plot_grid(
+    cowplot::plot_grid(
+      cowplot::plot_grid(
+        ptds + theme(legend.position = "none"), 
+        pgds + theme(legend.position = "none"),
+        nrow = 1, labels = c("A", "B")
+      ),
+      cowplot::get_legend(pgds),
+      drbl,
+      labels = c("", "", "C"), rel_heights = c(1, 0.15, 0.8), ncol = 1
+    ),
+    q23ldsl, labels = c("", ""), rel_heights = c(4, 2.5), ncol = 1
+  )
+)
+dev.off()
 
 saveRDS(NULL, file = outrds)
 date()

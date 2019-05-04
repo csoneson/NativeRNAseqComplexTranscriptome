@@ -3,11 +3,6 @@ for (i in 1:length(args)) {
   eval(parse(text = args[[i]]))
 }
 
-lowerfun <- function(data, mapping){
-  ggplot(data = data, mapping = mapping) +
-    geom_point(alpha = 0.3, size = 0.5)
-}
-
 suppressPackageStartupMessages({
   library(dplyr)
   library(ggplot2)
@@ -30,10 +25,8 @@ print(outrds)
 tx2gene <- readRDS(tx2gene)
 
 ## Read quantifications
-salmonfiles_illumina <- list.files("Illumina/salmon31", 
-                                   pattern = "quant.sf", 
-                                   recursive = TRUE, 
-                                   full.names = TRUE)
+salmonfiles_illumina <- list.files("Illumina/salmon31", pattern = "quant.sf", 
+                                   recursive = TRUE, full.names = TRUE)
 names(salmonfiles_illumina) <- paste0("Illumina__", 
                                       basename(gsub("/quant.sf", "", 
                                                     salmonfiles_illumina)))
@@ -42,6 +35,8 @@ salmonfiles_illumina <-
                          paste0("Illumina__",
                                 sample_annotation$sample_orig[sample_annotation$condition %in% 
                                                                 conditions])]
+salmonfiles_illumina
+
 txi_illumina <- tximport(salmonfiles_illumina, type = "salmon", txOut = TRUE)
 txig_illumina <- summarizeToGene(txi_illumina, tx2gene = tx2gene[, c("tx", "gene")])
 
@@ -81,6 +76,7 @@ salmonfiles_nanopore <-
   salmonfiles_nanopore[gsub("salmon31__|salmon31noclip__|salmonminimap2_p0.8__|salmonminimap2_p0.99__", "", names(salmonfiles_nanopore)) %in%
                          sample_annotation$sample_orig[sample_annotation$condition %in% 
                                                          conditions]]
+salmonfiles_nanopore
 
 txi_nanopore <- tximport(salmonfiles_nanopore, type = "salmon", txOut = TRUE)
 txig_nanopore <- summarizeToGene(txi_nanopore, tx2gene = tx2gene[, c("tx", "gene")])
@@ -91,12 +87,14 @@ txi <- as.data.frame(txi_nanopore$counts) %>%
                      tibble::rownames_to_column("tx"), by = "tx") %>%
   as.data.frame() %>%
   tibble::column_to_rownames("tx")
+dim(txi)
 txig <- as.data.frame(txig_nanopore$counts) %>%
   tibble::rownames_to_column("gene") %>%
   dplyr::full_join(as.data.frame(txig_illumina$abundance) %>% 
                      tibble::rownames_to_column("gene"), by = "gene") %>%
   as.data.frame() %>%
   tibble::column_to_rownames("gene")
+dim(txig)
 
 fixCorDf <- function(cordf) {
   cordf %>%
@@ -111,7 +109,8 @@ fixCorDf <- function(cordf) {
     dplyr::filter(method1 == "Illumina" & method2 != "Illumina" & 
                     sample1 != sample2 & condition1 == condition2) %>%
     dplyr::mutate(dataset2 = sapply(strsplit(sample2, "_"), 
-                                    .subset, 1))
+                                    .subset, 1)) %>%
+    dplyr::mutate(dataset2 = factor(dataset2, levels = ds_order[ds_order %in% dataset2]))
 }
 
 spearman_tx <- fixCorDf(as.data.frame(cor(sqrt(txi), method = "spearman")))

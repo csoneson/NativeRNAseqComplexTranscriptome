@@ -72,11 +72,14 @@ remapds <- c(pilot = "ONT-NSK007-HAP",
              FGCZ_PCS109_GridION = "ONT-SQK-PCS109-HAP")
 
 ## Define color schemes
-ds_colors <- c(`ONT-DCS108-HAP`= "#66C2A5", `ONT-PCS108-HAP` = "#FC8D62", 
+ds_colors <- c(`ONT-DCS108-HAP`= "#66C2A5", `ONT-NSK007-HAP` = "#FC8D62", 
                `ONT-RNA001-HEK` = "#8DA0CB", `TempSwitch-HAP` = "darkgrey", 
-               `ONT-NSK007-HAP` = "#A6D854", `ONT-RNA001-HAP` = "#FFD92F", 
+               `ONT-PCS108-HAP` = "#A6D854", `ONT-RNA001-HAP` = "#FFD92F", 
                Illumina = "#B3B3B3", `ONT-PCS109-HAP` = "#E78AC3",
                `ONT-SQK-PCS109-HAP` = "darkblue")
+
+ds_order <- c("Illumina", "ONT-NSK007-HAP", "ONT-DCS108-HAP", "ONT-RNA001-HAP", 
+              "ONT-RNA001-HEK")
 
 ## Help function to remove the dataset name from the sample name
 removeDatasetFromSample <- function(sample, dataset) {

@@ -5,7 +5,7 @@ for (i in 1:length(args)) {
 
 suppressPackageStartupMessages({
   library(dplyr)
-  library(ggplot2, lib.loc = "/home/charlotte/R/x86_64-pc-linux-gnu-library/3.5")
+  library(ggplot2)
   library(stringr)
 })
 source("manuscript_results_figures/Rscripts/remap_sample_names.R")
@@ -26,6 +26,7 @@ salmonfiles <- unlist(lapply(datasets, function(ds) {
 }))
 salmonfiles <- salmonfiles[names(salmonfiles) %in% 
                              sample_annotation$sample_remap[sample_annotation$condition %in% conditions]]
+salmonfiles
 
 eqcl <- lapply(salmonfiles, function(f) {
   x <- readLines(f)
@@ -37,7 +38,7 @@ eqcl <- lapply(salmonfiles, function(f) {
   ## Split equivalence class characteristics. Each element of the list corresponds
   ## to one equivalence class, and lists its number of transcripts, the
   ## transcripts IDs and the total number of reads
-  do.call(rbind, lapply(quants, function(w) {
+  do.call(dplyr::bind_rows, lapply(quants, function(w) {
     tmp = strsplit(w, "\\\t")[[1]]
     nbr_tx = as.numeric(tmp[1])
     data.frame(nbr_tx = rep(nbr_tx, as.numeric(tmp[length(tmp)])),
@@ -50,16 +51,18 @@ for (nm in names(eqcl)) {
   eqcl[[nm]]$dataset <- strsplit(nm, "_")[[1]][1]
 }
 
-eqcl <- do.call(rbind, eqcl)
+eqcl <- do.call(dplyr::bind_rows, eqcl) %>%
+  dplyr::mutate(dataset = factor(dataset, levels = ds_order[ds_order %in% dataset]))
 
 png(gsub("\\.rds$", ".png", outrds), height = 12, width = 16, 
     unit = "in", res = 400)
-p1 <- ggplot(eqcl %>% dplyr::mutate(sample = removeDatasetFromSample(sample, dataset)), 
+p1 <- ggplot(eqcl %>% 
+               dplyr::mutate(sample = removeDatasetFromSample(sample, dataset)), 
              aes(x = sample, y = nbr_tx, fill = dataset)) + 
   geom_boxplot() + theme_bw() + xlab("") + 
   ylab("Number of transcripts in equivalence class") + 
   theme(legend.position = "none") + 
-  facet_grid(~dataset, scales = "free_x", space = "free_x") + 
+  facet_grid(~ dataset, scales = "free_x", space = "free_x") + 
   scale_fill_manual(values = ds_colors, name = "")
 p2 <- p1 + 
   stat_summary(fun.y = mean, geom = "point", shape = 18, 
@@ -70,7 +73,23 @@ cowplot::plot_grid(p1 + ggtitle("Full range"),
                    ncol = 1, labels = c("A", "B"), rel_heights = c(1, 1))
 dev.off()
 
+## By dataset
+p1ds <- ggplot(eqcl, 
+               aes(x = dataset, y = nbr_tx, fill = dataset)) + 
+  geom_boxplot() + theme_bw() + xlab("") + 
+  ylab("Number of transcripts in equivalence class") + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) + 
+  scale_fill_manual(values = ds_colors, name = "")
+p2ds <- p1ds + 
+  stat_summary(fun.y = mean, geom = "point", shape = 18, 
+               size = 4, color = "black", fill = "black") +
+  coord_cartesian(ylim = c(0, 15))
+
+
 saveRDS(list(ptxeqfull = p1 + ggtitle("Full range"), 
-             ptxeqzoom = p2 + ggtitle("Zoomed in")), file = outrds)
+             ptxeqzoom = p2 + ggtitle("Zoomed in"),
+             ptxeqfullds = p1ds + ggtitle("Full range"), 
+             ptxeqzoomds = p2ds + ggtitle("Zoomed in")), file = outrds)
 date()
 sessionInfo()

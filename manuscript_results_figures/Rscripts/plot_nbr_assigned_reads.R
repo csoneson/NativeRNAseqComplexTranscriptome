@@ -5,7 +5,7 @@ for (i in 1:length(args)) {
 
 suppressPackageStartupMessages({
   library(dplyr)
-  library(ggplot2, lib.loc = "/home/charlotte/R/x86_64-pc-linux-gnu-library/3.5")
+  library(ggplot2)
   library(cowplot)
   library(stringr)
 })
@@ -94,8 +94,9 @@ nReadsData <- nReads %>%
                     "Number of assigned reads, wubminimap2")
   ) %>%
   dplyr::mutate(
-    rtype = factor(rtype, levels = names(colvec)
-    ))
+    rtype = factor(rtype, levels = names(colvec)),
+    dataset = factor(dataset, levels = ds_order[ds_order %in% dataset])
+  )
 
 png(gsub("\\.rds$", ".png", outrds), width = 16, height = 6, unit = "in", res = 400)
 print(ggplot(nReadsData %>% 
@@ -116,11 +117,12 @@ print(ggplot(nReadsData %>%
                        dplyr::mutate(sample = removeDatasetFromSample(sample, dataset)) %>%
                        dplyr::group_by(sample, dataset) %>% 
                        dplyr::mutate(
-                         nReads = round(nReads/nReads[rtype=="Total number of reads"]*100)), 
+                         nReads = round(nReads/nReads[rtype == "Total number of reads"]*100)), 
                      fun.data = function(x) {
                        return(c(y = ifelse(x == 100, -100000, 1e-4), label = x))}, 
                      geom = "text", alpha = 1, size = 2, vjust = -1, 
-                     position = position_dodge(width = 0.9)))
+                     position = position_dodge(width = 0.9))) + 
+  ylim(0, NA)
 
 dev.off()
 

@@ -24,6 +24,7 @@ print(datasets)
 print(conditions)
 print(txcercc)  ## Plot of transcript coverage, ERCC
 print(txcsirv)  ## Plot of transcript coverage, SIRV
+print(txcna12878)  ## Plot of transcript coverage, NA12878
 print(ilmnnplength)  ## Plot of Illumina/nanopore tx/read length
 print(outrds)
 
@@ -44,7 +45,8 @@ dfct_primary <- do.call(dplyr::bind_rows, lapply(datasets, function(ds) {
       dplyr::mutate(dataset = remapds[ds])
   }))
 })) %>%
-  dplyr::mutate(gname = tx2gene$gene[match(rname, tx2gene$tx)])
+  dplyr::mutate(gname = tx2gene$gene[match(rname, tx2gene$tx)]) %>%
+  dplyr::mutate(dataset = factor(dataset, levels = ds_order[ds_order %in% dataset]))
   
 dfct_longest <- do.call(dplyr::bind_rows, lapply(datasets, function(ds) {
   rd <- readRDS(paste0(ds, "/output/", ds, "_nbr_reads.rds"))
@@ -66,7 +68,8 @@ dfct_longest <- do.call(dplyr::bind_rows, lapply(datasets, function(ds) {
       dplyr::mutate(dataset = remapds[ds])
   }))
 })) %>%
-  dplyr::mutate(gname = tx2gene$gene[match(rname, tx2gene$tx)])
+  dplyr::mutate(gname = tx2gene$gene[match(rname, tx2gene$tx)]) %>%
+  dplyr::mutate(dataset = factor(dataset, levels = ds_order[ds_order %in% dataset]))
 
 ## Write to file: for each sample, the fraction of reads aligning to the
 ## transcriptome that cover at least X% of at least one of the transcripts it
@@ -166,7 +169,7 @@ plotCovFractionByLengthDataset <- function(plotdf, maxLength) {
                  geom = "text", alpha = 1, size = 2.5, vjust = -1)
 }
 
-png(gsub("\\.rds$", "_coverage_fraction_of_transcripts_longest_readswithsecondaryalignments_byds.png", outrds), width = 8, height = 4, unit = "in", res = 400)
+png(gsub("\\.rds$", "_coverage_fraction_of_transcripts_longest_readswithsecondaryalignments_byds.png", outrds), width = 8, height = 3, unit = "in", res = 400)
 print(ggplot(dfct_longest %>% 
                dplyr::mutate(covFraction = (nbrM + nbrD)/txLength) %>%
                dplyr::filter(nbrSecondaryAlignments > 0),
@@ -234,6 +237,7 @@ dev.off()
 ## Put together with SIRV/ERCC + Illumina comparison
 sirvcov <- readRDS(txcsirv)
 ercccov <- readRDS(txcercc)
+na12878cov <- readRDS(txcna12878)
 ilmn <- readRDS(ilmnnplength)
 
 png(gsub("\\.rds$", "_coverage_fraction_summary.png", outrds),
@@ -242,11 +246,135 @@ print(cowplot::plot_grid(
   plotCovFractionByLengthDataset(dfct_longest, max(dfct_longest$txLength)) + 
     facet_wrap(~ dataset, nrow = 1),
   cowplot::plot_grid(
+    na12878cov$covfraclongest + ggtitle("NA12878"),
     sirvcov$covfraclongest + ggtitle("SIRV"),
     ercccov$covfraclongest + ggtitle("ERCC"),
-    ilmn$illuminatx_nanoporeread_density_byds,
-    nrow = 1, rel_widths = c(1, 1, 2), labels = c("B", "C", "D"),
-    align = "h", axis = "t"
+    ilmn$illuminatx_nanoporeread_density_byds + 
+      theme(legend.position = c(0.75, 0.77)),
+    nrow = 1, rel_widths = c(1.12, 0.8, 0.8, 1.28), labels = c("B", "C", "D", "E"),
+    align = "h", axis = "tb"
+  ),
+  ncol = 1, rel_heights = c(1, 1), labels = c("A", "")
+))
+dev.off()
+
+png(gsub("\\.rds$", "_coverage_fraction_summary_onlyaligned.png", outrds),
+    width = 14, height = 10, unit = "in", res = 400)
+print(cowplot::plot_grid(
+  plotCovFractionByLengthDataset(dfct_longest, max(dfct_longest$txLength)) + 
+    facet_wrap(~ dataset, nrow = 1),
+  cowplot::plot_grid(
+    na12878cov$covfraclongest + ggtitle("NA12878"),
+    sirvcov$covfraclongest + ggtitle("SIRV"),
+    ercccov$covfraclongest + ggtitle("ERCC"),
+    ilmn$illuminatx_nanoporeread_density_byds_aligned + 
+      theme(legend.position = c(0.75, 0.77)),
+    nrow = 1, rel_widths = c(1.12, 0.8, 0.8, 1.28), labels = c("B", "C", "D", "E"),
+    align = "h", axis = "tb"
+  ),
+  ncol = 1, rel_heights = c(1, 1), labels = c("A", "")
+))
+dev.off()
+
+png(gsub("\\.rds$", "_coverage_fraction_summary_linear.png", outrds),
+    width = 14, height = 10, unit = "in", res = 400)
+print(cowplot::plot_grid(
+  plotCovFractionByLengthDataset(dfct_longest, max(dfct_longest$txLength)) + 
+    facet_wrap(~ dataset, nrow = 1),
+  cowplot::plot_grid(
+    na12878cov$covfraclongest + ggtitle("NA12878"),
+    sirvcov$covfraclongest + ggtitle("SIRV"),
+    ercccov$covfraclongest + ggtitle("ERCC"),
+    ilmn$illuminatx_nanoporeread_density_linear_byds + 
+      theme(legend.position = c(0.75, 0.77)),
+    nrow = 1, rel_widths = c(1.12, 0.8, 0.8, 1.28), labels = c("B", "C", "D", "E"),
+    align = "h", axis = "tb"
+  ),
+  ncol = 1, rel_heights = c(1, 1), labels = c("A", "")
+))
+dev.off()
+
+png(gsub("\\.rds$", "_coverage_fraction_summary_linear_onlyaligned.png", outrds),
+    width = 14, height = 10, unit = "in", res = 400)
+print(cowplot::plot_grid(
+  plotCovFractionByLengthDataset(dfct_longest, max(dfct_longest$txLength)) + 
+    facet_wrap(~ dataset, nrow = 1),
+  cowplot::plot_grid(
+    na12878cov$covfraclongest + ggtitle("NA12878"),
+    sirvcov$covfraclongest + ggtitle("SIRV"),
+    ercccov$covfraclongest + ggtitle("ERCC"),
+    ilmn$illuminatx_nanoporeread_density_linear_byds_aligned + 
+      theme(legend.position = c(0.75, 0.77)),
+    nrow = 1, rel_widths = c(1.12, 0.8, 0.8, 1.28), labels = c("B", "C", "D", "E"),
+    align = "h", axis = "tb"
+  ),
+  ncol = 1, rel_heights = c(1, 1), labels = c("A", "")
+))
+dev.off()
+
+png(gsub("\\.rds$", "_coverage_fraction_summary_violin.png", outrds),
+    width = 14, height = 10, unit = "in", res = 400)
+print(cowplot::plot_grid(
+  plotCovFractionByLengthDataset(dfct_longest, max(dfct_longest$txLength)) + 
+    facet_wrap(~ dataset, nrow = 1),
+  cowplot::plot_grid(
+    na12878cov$covfraclongest + ggtitle("NA12878"),
+    sirvcov$covfraclongest + ggtitle("SIRV"),
+    ercccov$covfraclongest + ggtitle("ERCC"),
+    ilmn$illuminatx_nanoporeread_violin_byds,
+    nrow = 1, rel_widths = c(1.12, 0.8, 0.8, 1.28), labels = c("B", "C", "D", "E"),
+    align = "h", axis = "tb"
+  ),
+  ncol = 1, rel_heights = c(1, 1), labels = c("A", "")
+))
+dev.off()
+
+png(gsub("\\.rds$", "_coverage_fraction_summary_violin_onlyaligned.png", outrds),
+    width = 14, height = 10, unit = "in", res = 400)
+print(cowplot::plot_grid(
+  plotCovFractionByLengthDataset(dfct_longest, max(dfct_longest$txLength)) + 
+    facet_wrap(~ dataset, nrow = 1),
+  cowplot::plot_grid(
+    na12878cov$covfraclongest + ggtitle("NA12878"),
+    sirvcov$covfraclongest + ggtitle("SIRV"),
+    ercccov$covfraclongest + ggtitle("ERCC"),
+    ilmn$illuminatx_nanoporeread_violin_byds_aligned,
+    nrow = 1, rel_widths = c(1.12, 0.8, 0.8, 1.28), labels = c("B", "C", "D", "E"),
+    align = "h", axis = "tb"
+  ),
+  ncol = 1, rel_heights = c(1, 1), labels = c("A", "")
+))
+dev.off()
+
+png(gsub("\\.rds$", "_coverage_fraction_summary_violin_linear.png", outrds),
+    width = 14, height = 10, unit = "in", res = 400)
+print(cowplot::plot_grid(
+  plotCovFractionByLengthDataset(dfct_longest, max(dfct_longest$txLength)) + 
+    facet_wrap(~ dataset, nrow = 1),
+  cowplot::plot_grid(
+    na12878cov$covfraclongest + ggtitle("NA12878"),
+    sirvcov$covfraclongest + ggtitle("SIRV"),
+    ercccov$covfraclongest + ggtitle("ERCC"),
+    ilmn$illuminatx_nanoporeread_violin_linear_byds,
+    nrow = 1, rel_widths = c(1.12, 0.8, 0.8, 1.28), labels = c("B", "C", "D", "E"),
+    align = "h", axis = "tb"
+  ),
+  ncol = 1, rel_heights = c(1, 1), labels = c("A", "")
+))
+dev.off()
+
+png(gsub("\\.rds$", "_coverage_fraction_summary_violin_linear_onlyaligned.png", outrds),
+    width = 14, height = 10, unit = "in", res = 400)
+print(cowplot::plot_grid(
+  plotCovFractionByLengthDataset(dfct_longest, max(dfct_longest$txLength)) + 
+    facet_wrap(~ dataset, nrow = 1),
+  cowplot::plot_grid(
+    na12878cov$covfraclongest + ggtitle("NA12878"),
+    sirvcov$covfraclongest + ggtitle("SIRV"),
+    ercccov$covfraclongest + ggtitle("ERCC"),
+    ilmn$illuminatx_nanoporeread_violin_linear_byds_aligned,
+    nrow = 1, rel_widths = c(1.12, 0.8, 0.8, 1.28), labels = c("B", "C", "D", "E"),
+    align = "h", axis = "tb"
   ),
   ncol = 1, rel_heights = c(1, 1), labels = c("A", "")
 ))
