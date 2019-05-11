@@ -266,7 +266,7 @@ $(Rscriptdir)/merge_promoter_bed_files.R
 ## ========================================================================================= ##
 ## Remove reads that are artificial aggregates of unrelated "template" and "complement" reads
 define fastqrule
-$(1)/FASTQ/$(2).fastq.gz: $(1)/FASTQ/$(2)_orig.fastq.gz
+$(1)/FASTQ/$(2).fastq.gz: $(1)/FASTQ/$(2)_orig.fastq.gz $(Rscriptdir)/filter_fastq.R
 	mkdir -p $(1)/Rout
 	$(R) "--args fastqin='$$<' fastqout='$$@'" $(Rscriptdir)/filter_fastq.R $(1)/Rout/filter_fastq_$(2).Rout
 endef
@@ -288,7 +288,7 @@ $(foreach D,HEK293RNA RNA001 NA12878public,$(foreach S,$($(D)samples),$(eval $(c
 ## ========================================================================================= ##
 RNA001/tailfindr/wt_1_RNA001_tailfindr.csv: $(Rscriptdir)/get_polyA_tail_lengths.R
 	mkdir -p $(@D)
-	$(R) "--args fast5dir='/home/Shared_sherborne/data/seq/hussain_bath_nanopore_rnaseq/data_from_Bath/wt_1_RNA001/wt_1_RNA001_fast5_basecalled/workspace/pass' ncores=16 outdir='$(@D)' csvfilename='$(notdir $@)'" $(Rscriptdir)/get_polyA_tail_lengths.R RNA001/Rout/find_polyA_tail_lengths_wt_1_RNA001.Rout
+	$(R) "--args fast5dir='/home/Shared_sherborne/data/seq/hussain_bath_nanopore_rnaseq/data_from_Bath/wt_1_RNA001/wt_1_RNA001_fast5_basecalled/workspace/pass' ncores=$(nthreads) outdir='$(@D)' csvfilename='$(notdir $@)'" $(Rscriptdir)/get_polyA_tail_lengths.R RNA001/Rout/find_polyA_tail_lengths_wt_1_RNA001.Rout
 
 ## ========================================================================================= ##
 ## Run FastQC
@@ -376,14 +376,14 @@ $(foreach D,FGCZ,$(foreach S,$($(D)samples),$(eval $(call minimap2genomerule,$(D
 $(foreach D,HEK293RNA RNA001 NA12878public,$(foreach S,$($(D)samples),$(eval $(call minimap2genomerule,$(D),$(S),fastq,dna))))
 
 ## Convert BAM files to bigWig
-define bigwigrule
+define bigwignprule
 $(1)/minimap2genome/$(2)/$(2)_minimap_genome_s.bw: $(1)/minimap2genome/$(2)/$(2)_minimap_genome_s.bam $(chromlengthtxt)
 	mkdir -p $$(@D)	
 	$(bedtools) genomecov -split -ibam $$(word 1,$$^) -bg > $$(@D)/$(2)_minimap_genome_s.bedGraph
 	$(bedGraphToBigWig) $$(@D)/$(2)_minimap_genome_s.bedGraph $$(word 2,$$^) $$@
 	rm -f $$(@D)/$(2)_minimap_genome_s.bedGraph
 endef
-$(foreach D,FGCZ,$(foreach S,$($(D)samples),$(eval $(call bigwigrule,$(D),$(S)))))
+$(foreach D,FGCZ,$(foreach S,$($(D)samples),$(eval $(call bigwignprule,$(D),$(S)))))
 
 ## Index genome bam
 define minimap2indexrule
@@ -957,7 +957,7 @@ $(foreach S,$(Illuminasamples) Illumina_WT,$(eval $(call stringtiegffcomparerule
 
 ## Run sqanti to compare with reference gtf
 define sqantiilmnrule
-Illumina/sqanti/$(1)/$(1)_report.pdf: Illumina/stringtie_assembly/$(1)/$(1)_stringtie_assembly.gtf
+Illumina/sqanti/$(1)/$(1)_report.pdf: Illumina/stringtie_assembly/$(1)/$(1)_stringtie_assembly.gtf $(gtf) $(genome)
 	mkdir -p $$(@D)
 	$(sqantiqc) -g -t $(nthreads) -o $(1) -d $$(@D) $$< $(gtf) $(genome)
 endef
@@ -1013,7 +1013,7 @@ $(Rscriptdir)/get_nbr_reads_NA12878public.R
 	mkdir -p $(1)/Rout
 	$(R) "--args txomebamdir_p0.99='$(1)/minimap2txome_p0.99' outrds='$$@'" $(Rscriptdir)/get_nbr_reads_NA12878public.R $(1)/Rout/get_nbr_reads.Rout
 endef
-$(foreach D,NA12878public,$(eval $(call nbrreadsrule2,$(D),fastq,dna)))
+$(foreach D,NA12878public,$(eval $(call nbrreadsrule2,$(D))))
 
 ## ========================================================================================= ##
 ## Compare primary and supplementary alignments
@@ -1297,8 +1297,10 @@ datasets_to_include.mk
 	$(R) "--args datasets='$(datasetsmsc)' conditions='$(conditionsmsc)' outrds='$@'" manuscript_results_figures/Rscripts/plot_sqanti_round2_summary.R manuscript_results_figures/Rout/plot_sqanti_round2_summary.Rout
 
 manuscript_results_figures/figures/gffcompare_sqanti_comparison/gffcompare_sqanti_comparison.rds: \
-$(foreach D,$(datasetsms),$(foreach S,$(D)_all $(D)_WT,$(D)/flair/$(S)/$(S)_minimap_genome_s_primary_flair_collapse.isoforms.gffcompare)) \
-$(foreach D,$(datasetsms) Illumina,$(foreach S,$(D)_WT,$(D)/sqanti/$(S)/$(S)_report.pdf)) \
+$(foreach D,$(datasetsms),$(foreach S,$(D)_WT,$(D)/flair_round2/$(S)/$(S)_minimap_genome_s_primary_flair_collapse.isoforms.gffcompare)) \
+$(foreach D,$(datasetsms),$(foreach S,$(D)_WT,$(D)/sqanti_round2/$(S)/$(S)_report.pdf)) \
+$(foreach D,$(datasetsms),$(foreach S,$(D)_WT,$(D)/flair_round2_ilmnjunc/$(S)/$(S)_minimap_genome_s_primary_flair_collapse_ilmnjunc.isoforms.gffcompare)) \
+$(foreach D,$(datasetsms),$(foreach S,$(D)_WT,$(D)/sqanti_round2_ilmnjunc/$(S)/$(S)_ilmnjunc_report.pdf)) \
 manuscript_results_figures/Rscripts/plot_compare_gffcompare_sqanti.R \
 manuscript_results_figures/Rscripts/remap_sample_names.R \
 datasets_to_include.mk

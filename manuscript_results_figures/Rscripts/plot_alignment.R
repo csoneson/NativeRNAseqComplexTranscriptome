@@ -142,7 +142,10 @@ dfsumm <- dplyr::bind_rows(
                      medianAlignedLengthGenomePrimary = median(alignedLength),
                      maxAlignedLengthGenomePrimary = max(alignedLength),
                      N50ReadLengthAlignedGenomePrimary = calcN50(readLength),
-                     N50AlignedLengthGenomePrimary = calcN50(alignedLength)),
+                     N50AlignedLengthGenomePrimary = calcN50(alignedLength),
+                     meanAccuracyGenomePrimary = mean(accuracy),
+                     medianAccuracyGenomePrimary = median(accuracy),
+                     sdAccuracyGenomePrimary = sqrt(var(accuracy))),
   gAlign %>% dplyr::filter(flag %in% c(0, 16)) %>%
     dplyr::summarize(totReadLengthAlignedGenomePrimary = sum(readLength),
                      totAlignedLengthGenomePrimary = sum(alignedLength),
@@ -150,7 +153,10 @@ dfsumm <- dplyr::bind_rows(
                      medianAlignedLengthGenomePrimary = median(alignedLength),
                      maxAlignedLengthGenomePrimary = max(alignedLength),
                      N50ReadLengthAlignedGenomePrimary = calcN50(readLength),
-                     N50AlignedLengthGenomePrimary = calcN50(alignedLength)) %>%
+                     N50AlignedLengthGenomePrimary = calcN50(alignedLength),
+                     meanAccuracyGenomePrimary = mean(accuracy),
+                     medianAccuracyGenomePrimary = median(accuracy),
+                     sdAccuracyGenomePrimary = sqrt(var(accuracy))) %>%
     dplyr::mutate(sample = "Overall", dataset = "Overall"),
   gAlign %>% dplyr::filter(flag %in% c(0, 16) & 
                              dataset %in% c("ONT-RNA001-HAP", "ONT-RNA001-HEK")) %>%
@@ -160,7 +166,10 @@ dfsumm <- dplyr::bind_rows(
                      medianAlignedLengthGenomePrimary = median(alignedLength),
                      maxAlignedLengthGenomePrimary = max(alignedLength),
                      N50ReadLengthAlignedGenomePrimary = calcN50(readLength),
-                     N50AlignedLengthGenomePrimary = calcN50(alignedLength)) %>%
+                     N50AlignedLengthGenomePrimary = calcN50(alignedLength),
+                     meanAccuracyGenomePrimary = mean(accuracy),
+                     medianAccuracyGenomePrimary = median(accuracy),
+                     sdAccuracyGenomePrimary = sqrt(var(accuracy))) %>%
     dplyr::mutate(sample = "nativeRNA", dataset = "nativeRNA"),
   gAlign %>% dplyr::filter(flag %in% c(0, 16)) %>%
     dplyr::group_by(dataset) %>%
@@ -170,7 +179,10 @@ dfsumm <- dplyr::bind_rows(
                      medianAlignedLengthGenomePrimary = median(alignedLength),
                      maxAlignedLengthGenomePrimary = max(alignedLength),
                      N50ReadLengthAlignedGenomePrimary = calcN50(readLength),
-                     N50AlignedLengthGenomePrimary = calcN50(alignedLength)) %>%
+                     N50AlignedLengthGenomePrimary = calcN50(alignedLength),
+                     meanAccuracyGenomePrimary = mean(accuracy),
+                     medianAccuracyGenomePrimary = median(accuracy),
+                     sdAccuracyGenomePrimary = sqrt(var(accuracy))) %>%
     dplyr::mutate(sample = "AllSamples")
 )
 
@@ -1126,7 +1138,7 @@ print(ggplot(df %>% dplyr::filter(rtype == "Reads aligning to the genome") %>%
              aes(x = aveBaseQuality, y = accuracy)) + 
         geom_hex(bins = 100, aes(fill = stat(density))) + 
         scale_fill_gradient(name = "", low = "bisque2", high = "darkblue") + 
-        facet_wrap(~ sample, scales = "free") + theme_bw() + 
+        facet_wrap(~ sample) + theme_bw() + 
         xlab("Average base quality") + ylab("Base accuracy") + 
         ggtitle("Primary alignments to the genome"))
 dev.off()
